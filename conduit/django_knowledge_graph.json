@@ -1,0 +1,16 @@
+{
+  "layer1_project_topology": {
+    "project_name": "conduit",
+    "project_root": "D:\\Adaml\\Android_automation\\Android_Automation\\ai_agents\\django-realworld-example-app\\conduit",
+    "installed_apps": [],
+    "core_config": {
+      "settings": "D:\\Adaml\\Android_automation\\Android_Automation\\ai_agents\\django-realworld-example-app\\conduit\\settings.py"
+    },
+    "databases": {},
+    "middleware": [],
+    "static_root": "",
+    "media_root": ""
+  },
+  "layer2_app_registry": {},
+  "layer3_file_semantics": {}
+}

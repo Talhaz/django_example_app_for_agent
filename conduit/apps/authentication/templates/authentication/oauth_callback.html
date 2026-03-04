@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google OAuth Callback</title>
+</head>
+<body>
+    <div id="loading">
+        <p>Authentication successful. Redirecting...</p>
+    </div>
+    <div id="result" style="display: none;"></div>
+
+    <script>
+        // Get URL parameters
+        const params = new URLSearchParams(window.location.search);
+        const error = params.get('error');
+
+        if (error) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('result').innerHTML = `
+                <h2>Authentication Error</h2>
+                <p>Error: ${error}</p>
+                <button onclick="window.close()">Close</button>
+            `;
+            document.getElementById('result').style.display = 'block';
+        } else {
+            // The OAuth callback view will handle the response
+            // Just display loading for now
+            setTimeout(() => {
+                window.location.href = '/api/articles/';
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
