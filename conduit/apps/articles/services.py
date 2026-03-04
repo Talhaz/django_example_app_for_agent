@@ -4,17 +4,47 @@ Services for article-related business logic.
 This module contains service classes that encapsulate complex business logic
 that was previously embedded in views. This improves separation of concerns
 and makes the code more testable and reusable.
+
+Services:
+    - ArticleFilterService: Comprehensive filtering and sorting with date parsing
+    - ArticleExportService: Export articles to CSV/JSON formats
+    - ArticleStatsService: Calculate article statistics
+    - ArticleSearchService: Full-text search across multiple fields
+    - ArticleFeedService: Personalized feeds from followed users
 """
 
+from datetime import datetime, timedelta
 from django.db.models import Q, Count, F
+from django.utils import timezone
 
 
 class ArticleFilterService:
     """
     Service for filtering and sorting article querysets.
-    
+
     This service encapsulates all the complex filtering logic that was
     previously in the ArticleViewSet.get_queryset() method.
+
+    Supported Filters:
+        - author: Filter by author username
+        - tag: Filter by single tag
+        - tags: Filter by multiple comma-separated tags
+        - favorited: Filter articles favorited by a user
+        - category: Filter by article category
+        - search: Search in title, description, or body
+        - date_from / date_to: Date range (legacy parameter names)
+        - start_date / end_date: Date range (preferred parameter names)
+        - status: Filter by article status
+        - sort: Sort the results (date, -date, popularity, -popularity, favorites, -favorites, comments, -comments)
+
+    Date Filtering:
+        Supports multiple date formats:
+        - YYYY-MM-DD (ISO date)
+        - YYYY-MM-DDTHH:MM:SS (ISO datetime)
+        - YYYY-MM-DD HH:MM:SS (SQL datetime)
+
+        The end_date is inclusive - articles created on the end_date are included.
+        Timezone-aware filtering is automatically applied.
     """
     
     def __init__(self, base_queryset):
@@ -29,10 +59,10 @@ class ArticleFilterService:
     def apply_filters(self, filters):
         """
         Apply all filters to the queryset.
-        
+
         Args:
             filters: Dictionary of filter parameters from request.query_params
-            
+
         Returns:
             Filtered and sorted queryset
         """
@@ -43,15 +73,18 @@ class ArticleFilterService:
         self._filter_by_favorited_by(filters.get('favorited'))
         self._filter_by_category(filters.get('category'))
         self._filter_by_search(filters.get('search'))
-        self._filter_by_date_range(
-            filters.get('date_from'),
-            filters.get('date_to')
-        )
+
+        # Handle date range with support for both parameter naming conventions
+        # Priority: start_date/end_date > date_from/date_to (for backward compatibility)
+        date_from = filters.get('start_date') or filters.get('date_from')
+        date_to = filters.get('end_date') or filters.get('date_to')
+        self._filter_by_date_range(date_from, date_to)
+
         self._filter_by_status(filters.get('status'))
-        
+
         # Apply sorting
         self._apply_sorting(filters.get('sort'))
-        
+
         return self.queryset
     
     def _filter_by_author(self, author):
@@ -93,11 +126,94 @@ class ArticleFilterService:
             )
     
     def _filter_by_date_range(self, date_from, date_to):
-        """Filter by date range."""
-        if date_from:
-            self.queryset = self.queryset.filter(created_at__gte=date_from)
-        if date_to:
-            self.queryset = self.queryset.filter(created_at__lte=date_to)
+        """
+        Filter by date range with proper parsing and validation.
+
+        Supports multiple parameter names for flexibility:
+        - date_from / date_to (legacy)
+        - start_date / end_date (more descriptive)
+
+        Args:
+            date_from: Start date string (YYYY-MM-DD) or datetime object
+            date_to: End date string (YYYY-MM-DD) or datetime object
+        """
+        # Handle None values
+        if not date_from and not date_to:
+            return
+
+        # Parse dates if they're strings
+        start_date = self._parse_date(date_from) if date_from else None
+        end_date = self._parse_date(date_to) if date_to else None
+
+        # Apply filters with timezone awareness
+        if start_date:
+            # Ensure start_date is timezone-aware
+            if timezone.is_naive(start_date):
+                start_date = timezone.make_aware(start_date)
+            self.queryset = self.queryset.filter(created_at__gte=start_date)
+
+        if end_date:
+            # Ensure end_date is timezone-aware and includes the entire day
+            if timezone.is_naive(end_date):
+                end_date = timezone.make_aware(end_date)
+            # Add one day to include the entire end_date
+            end_date_inclusive = end_date + timedelta(days=1)
+            self.queryset = self.queryset.filter(created_at__lt=end_date_inclusive)
+
+    @staticmethod
+    def _parse_date(date_value):
+        """
+        Parse a date string or return datetime object.
+
+        Supports formats:
+        - YYYY-MM-DD (ISO date)
+        - YYYY-MM-DDTHH:MM:SS (ISO datetime)
+        - YYYY-MM-DD HH:MM:SS (SQL datetime)
+
+        Args:
+            date_value: Date string or datetime object
+
+        Returns:
+            datetime object or None if parsing fails
+
+        Raises:
+            ValueError: If date string cannot be parsed
+        """
+        if date_value is None:
+            return None
+
+        # If already a datetime/date object, convert to datetime
+        if isinstance(date_value, datetime):
+            return date_value
+        if hasattr(date_value, 'strftime'):  # date object
+            return datetime.combine(date_value, datetime.min.time())
+
+        # Try parsing as string
+        date_str = str(date_value).strip()
+
+        # Try ISO format first (most common)
+        try:
+            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+
+        # Try SQL format
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            pass
+
+        # Try date-only format
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            pass
+
+        # If all parsing fails, raise ValueError
+        raise ValueError(
+            f"Invalid date format: '{date_str}'. "
+            f"Expected formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DD HH:MM:SS"
+        )
     
     def _filter_by_status(self, status):
         """Filter by article status."""

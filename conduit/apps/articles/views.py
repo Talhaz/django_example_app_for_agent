@@ -561,6 +561,11 @@ class ArticlesByDateRangeAPIView(ArticleQueryMixin, generics.ListAPIView):
         - end_date: End date in format YYYY-MM-DD (required)
         - status: Filter by status (default: 'published')
 
+    Supported date formats:
+        - YYYY-MM-DD (ISO date)
+        - YYYY-MM-DDTHH:MM:SS (ISO datetime)
+        - YYYY-MM-DD HH:MM:SS (SQL datetime)
+
     Example request: ``/api/articles/date-range/?start_date=2024-01-01&end_date=2024-12-31``
     Returns paginated list of articles created within the specified date range.
     Articles are ordered by newest first (created_at descending).
@@ -570,8 +575,8 @@ class ArticlesByDateRangeAPIView(ArticleQueryMixin, generics.ListAPIView):
     serializer_class = ArticleSerializer
 
     def get_queryset(self):
-        """Filter articles by date range parameters."""
-        from datetime import datetime
+        """Filter articles by date range parameters using ArticleFilterService."""
+        from .services import ArticleFilterService
 
         start_date_str = self.request.query_params.get('start_date', None)
         end_date_str = self.request.query_params.get('end_date', None)
@@ -581,30 +586,20 @@ class ArticlesByDateRangeAPIView(ArticleQueryMixin, generics.ListAPIView):
         if not start_date_str or not end_date_str:
             return Article.objects.none()
 
-        try:
-            # Parse date strings
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        # Use ArticleFilterService for consistent filtering with proper date parsing
+        base_queryset = self.get_base_queryset()
+        filter_service = ArticleFilterService(base_queryset)
 
-            # Include the entire end date by adding one day
-            end_date = end_date.replace(day=end_date.day + 1)
+        # Build filters dict
+        filters = {
+            'start_date': start_date_str,
+            'end_date': end_date_str,
+            'status': status_filter,
+            'sort': '-date'
+        }
 
-        except ValueError:
-            # Invalid date format
-            return Article.objects.none()
-
-        # Start with base queryset and apply filters
-        base_queryset = self.get_base_queryset().filter(
-            created_at__gte=start_date,
-            created_at__lt=end_date
-        )
-
-        # Apply status filter
-        if status_filter:
-            base_queryset = base_queryset.filter(status=status_filter)
-
-        # Order by newest first
-        return base_queryset.order_by('-created_at')
+        # Apply filters and return
+        return filter_service.apply_filters(filters)
 
     def list(self, request, *args, **kwargs):
         """Return paginated list of articles in the specified date range."""
