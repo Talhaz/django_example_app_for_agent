@@ -48,6 +48,24 @@ class Article(TimestampedModel):
     )
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general', db_index=True)
 
+    # Language field for article language
+    LANGUAGE_CHOICES = (
+        ('en', 'English'),
+        ('es', 'Spanish'),
+        ('fr', 'French'),
+        ('de', 'German'),
+        ('it', 'Italian'),
+        ('pt', 'Portuguese'),
+        ('ru', 'Russian'),
+        ('zh', 'Chinese'),
+        ('ja', 'Japanese'),
+        ('ko', 'Korean'),
+        ('ar', 'Arabic'),
+        ('hi', 'Hindi'),
+        ('other', 'Other'),
+    )
+    language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='en', db_index=True)
+
     # Enhanced fields
     view_count = models.PositiveIntegerField(default=0, db_index=True)
     published_at = models.DateTimeField(null=True, blank=True, db_index=True)

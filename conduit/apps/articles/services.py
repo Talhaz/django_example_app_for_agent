@@ -42,11 +42,14 @@ class ArticleFilterService:
         self._filter_by_multiple_tags(filters.get('tags'))
         self._filter_by_favorited_by(filters.get('favorited'))
         self._filter_by_category(filters.get('category'))
+        self._filter_by_language(filters.get('language'))
         self._filter_by_search(filters.get('search'))
-        self._filter_by_date_range(
-            filters.get('date_from'),
-            filters.get('date_to')
-        )
+
+        # Handle date range with support for both parameter naming conventions
+        # Priority: start_date/end_date > date_from/date_to (for backward compatibility)
+        date_from = filters.get('start_date') or filters.get('date_from')
+        date_to = filters.get('end_date') or filters.get('date_to')
+        self._filter_by_date_range(date_from, date_to)
         self._filter_by_status(filters.get('status'))
         
         # Apply sorting
@@ -103,6 +106,11 @@ class ArticleFilterService:
         """Filter by article status."""
         if status:
             self.queryset = self.queryset.filter(status=status)
+    
+    def _filter_by_language(self, language):
+        """Filter by language."""
+        if language:
+            self.queryset = self.queryset.filter(language=language)
     
     def _apply_sorting(self, sort_by):
         """

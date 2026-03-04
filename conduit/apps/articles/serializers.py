@@ -84,6 +84,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'updatedAt',
             'status',
             'category',
+            'language',
             'commentsCount',
             'viewCount',
             'readingTime',
