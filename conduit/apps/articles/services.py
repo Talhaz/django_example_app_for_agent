@@ -44,6 +44,10 @@ class ArticleFilterService:
         self._filter_by_category(filters.get('category'))
         self._filter_by_language(filters.get('language'))
         self._filter_by_search(filters.get('search'))
+        self._filter_by_dislike_count(
+            filters.get('min_dislikes'),
+            filters.get('max_dislikes')
+        )
 
         # Handle date range with support for both parameter naming conventions
         # Priority: start_date/end_date > date_from/date_to (for backward compatibility)
@@ -51,7 +55,8 @@ class ArticleFilterService:
         date_to = filters.get('end_date') or filters.get('date_to')
         self._filter_by_date_range(date_from, date_to)
         self._filter_by_status(filters.get('status'))
-        
+        self._filter_by_is_deleted(filters.get('is_deleted'))
+
         # Apply sorting
         self._apply_sorting(filters.get('sort'))
         
@@ -111,7 +116,44 @@ class ArticleFilterService:
         """Filter by language."""
         if language:
             self.queryset = self.queryset.filter(language=language)
-    
+
+    def _filter_by_dislike_count(self, min_dislikes, max_dislikes):
+        """Filter by dislike count range.
+
+        Args:
+            min_dislikes: Minimum number of dislikes (inclusive)
+            max_dislikes: Maximum number of dislikes (inclusive)
+        """
+        if min_dislikes is not None:
+            try:
+                min_dislikes = int(min_dislikes)
+                # Annotate with dislike count and filter
+                self.queryset = self.queryset.annotate(
+                    dislike_count=Count('dislikes')
+                ).filter(dislike_count__gte=min_dislikes)
+            except (ValueError, TypeError):
+                pass  # Invalid value, skip filter
+
+        if max_dislikes is not None:
+            try:
+                max_dislikes = int(max_dislikes)
+                # Annotate with dislike count if not already annotated
+                if not hasattr(self.queryset, 'dislike_count'):
+                    self.queryset = self.queryset.annotate(
+                        dislike_count=Count('dislikes')
+                    )
+                self.queryset = self.queryset.filter(dislike_count__lte=max_dislikes)
+            except (ValueError, TypeError):
+                pass  # Invalid value, skip filter
+
+    def _filter_by_is_deleted(self, is_deleted):
+        """Filter by soft delete status."""
+        if is_deleted is not None:
+            # Convert string to boolean
+            if isinstance(is_deleted, str):
+                is_deleted = is_deleted.lower() in ('true', '1', 'yes')
+            self.queryset = self.queryset.filter(is_deleted=is_deleted)
+
     def _apply_sorting(self, sort_by):
         """
         Apply sorting to the queryset.
@@ -121,7 +163,6 @@ class ArticleFilterService:
         """
         if not sort_by:
             return
-        
         valid_sorts = {
             'date': '-created_at',
             '-date': 'created_at',
@@ -131,13 +172,16 @@ class ArticleFilterService:
             '-favorites': 'favorited_by__count',
             'comments': '-comments__count',
             '-comments': 'comments__count',
+            'dislikes': '-dislikes__count',
+            '-dislikes': 'dislikes__count',
         }
-        
-        # Annotate if sorting by favorites or comments
-        if sort_by in ['favorites', '-favorites', 'comments', '-comments']:
+
+        # Annotate if sorting by favorites, comments, or dislikes
+        if sort_by in ['favorites', '-favorites', 'comments', '-comments', 'dislikes', '-dislikes']:
             self.queryset = self.queryset.annotate(
                 favorited_by_count=Count('favorited_by'),
-                comments_count=Count('comments')
+                comments_count=Count('comments'),
+                dislikes_count=Count('dislikes')
             )
         
         if sort_by in valid_sorts:
